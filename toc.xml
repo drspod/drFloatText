@@ -1,0 +1,3 @@
+<Addon Name="drFloatText" Version="1" Author="drspod" APIVersion="11" Description="Scrolling FloatText">
+    <Script Name="drFloatText.lua"/>
+</Addon>
