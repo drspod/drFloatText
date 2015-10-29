@@ -63,6 +63,22 @@ function DrFloatText:OnDocLoaded()
             self.wndMain:FindChild("fontFaceGrid"):AddRow(font.name)
         end
 
+        self.colorTypeLookup = {
+            playerNormalDmgText = {"Player Damage", "normal", {190, 468, 236, 494}},
+            playerCritDmgText = {"Player Damage", "crit", {190, 503, 236, 529}},
+            playerNormalHealText = {"Player Heal", "normal", {190, 538, 236, 564}},
+            playerCritHealText = {"Player Heal", "crit", {190, 573, 236, 599}},
+            playerShieldHealText = {"Player Shield Heal", "normal", {190, 608, 236, 634}},
+            playerCritShieldHealText = {"Player Shield Heal", "crit", {190, 643, 236, 669}},
+            targetNormalDmgText = {"Target Damage", "normal", {349, 468, 395, 494}},
+            targetCritDmgText = {"Target Damage", "crit", {349, 503, 395, 529}},
+            targetNormalHealText = {"Target Heal", "normal", {349, 538, 395, 564}},
+            targetCritHealText = {"Target Heal", "crit", {349, 573, 395, 599}},
+            targetShieldHealText = {"Target Shield Heal", "normal", {349, 608, 395, 634}},
+            targetCritShieldHealText = {"Target Shield Heal", "crit", {349, 643, 395, 669}},
+            targetVulnDmgText = {"Vulnerable Damage", "normal", {349, 678, 395, 704}}
+        }
+
         self.wndMain:Show(false, true)
         Apollo.RegisterSlashCommand("drft", "OnConfigure", self)
     end
@@ -99,6 +115,16 @@ function DrFloatText:OnConfigure()
     self.wndMain:FindChild("enableMinPercentileButton"):SetCheck(self:GetSettings().bEnableMinPercentile)
     self.wndMain:FindChild("minPercentileText"):SetText(tostring(100 * self:GetSettings().fMinPercentile))
 
+    for editName, params in pairs(self.colorTypeLookup) do
+        self.wndMain:FindChild(editName):SetText(self:GetSettings().tColors[params[1]][params[2]])
+    end
+
+    self.prevColors = {}
+    for s, p in pairs(self:GetSettings().tColors) do
+        self.prevColors[s] = {normal = p.normal, crit = p.crit}
+    end
+
+    self:UpdateColorPixies()
     self:OnSizeSliderChanged()
     self.wndMain:Invoke()
 end
@@ -132,6 +158,21 @@ function DrFloatText:OnSizeSliderChanged()
     self.wndMain:FindChild("labelPreview"):SetAnchorOffsets(w_offset, h_offset, w_offset + w, h_offset + h)
 end
 
+function DrFloatText:UpdateColorPixies()
+    self.wndMain:DestroyAllPixies()
+    for editName, params in pairs(self.colorTypeLookup) do
+        self.wndMain:AddPixie({cr = ApolloColor.new(self:GetSettings().tColors[params[1]][params[2]]:gsub("0x", "ff")),
+                strSprite = "WhiteFill",
+                loc = {fPoints = {0, 0, 0, 0}, nOffsets = params[3]}})
+    end
+end
+
+function DrFloatText:OnColorChanged(wnd, editBox, strText)
+    local params = self.colorTypeLookup[editBox:GetName()]
+    self:GetSettings().tColors[params[1]][params[2]] = editBox:GetText()
+    self:UpdateColorPixies()
+end
+
 function DrFloatText:OnOK()
     local grid = self.wndMain:FindChild("fontFaceGrid")
     self:GetSettings().strFontFace = grid:GetCellText(grid:GetCurrentRow())
@@ -143,10 +184,15 @@ function DrFloatText:OnOK()
     self:GetSettings().bEnableMinPercentile = self.wndMain:FindChild("enableMinPercentileButton"):IsChecked()
     self:GetSettings().fMinPercentile = tonumber(self.wndMain:FindChild("minPercentileText"):GetText()) / 100
 
+    for editName, params in pairs(self.colorTypeLookup) do
+        self:GetSettings().tColors[params[1]][params[2]] = self.wndMain:FindChild(editName):GetText()
+    end
+
     self.wndMain:Close()
 end
 
 function DrFloatText:OnCancel()
+    self:GetSettings().tColors = self.prevColors
     self.wndMain:Close()
 end
 
@@ -223,7 +269,11 @@ function DrFloatText:GetDamageOrHealTextOptions(unitTarget, eDamageType, bCritic
     local options = self:GetDefaultTextOption()
     options.eCollisionMode = bHighlight and CombatFloater.CodeEnumFloaterCollisionMode.Vertical or CombatFloater.CodeEnumFloaterCollisionMode.IgnoreCollision
     options.strFontFace = self:GetSettings().strFontFace
-    options.eLocation = (not self:GetSettings().bDropTallUnits or unitTarget:GetOverheadAnchor().y > self:GetSettings().nDropTallUnitOffset)
+    local anchor = nil
+    if unitTarget ~= nil then
+        anchor = unitTarget:GetOverheadAnchor()
+    end
+    options.eLocation = (not self:GetSettings().bDropTallUnits or anchor ~= nil and anchor.y > self:GetSettings().nDropTallUnitOffset)
             and CombatFloater.CodeEnumFloaterLocation.Top or CombatFloater.CodeEnumFloaterLocation.Bottom
     options.arFrames = self:GetDamageOrHealAnimation(unitTarget, eDamageType, bCritical, bHighlight, fDamagePercentile)
     return options
