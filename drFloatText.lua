@@ -12,13 +12,16 @@ function DrFloatText:new(o)
 end
 
 function DrFloatText:Init()
-    Apollo.RegisterAddon(self, false, nil, {"FloatText"})
+    Apollo.RegisterAddon(self, true, "drFloatText", {"FloatText"})
     self.options = {
-        strFontFace = "CRB_FloaterSmall",
+        strFontFace = "CRB_FloaterMedium",
+        fFontScale = 0.7,
         bSeparateShieldDamage = false,
         bDropTallUnits = true,
         nDropTallUnitOffset = 180,
-        fMinPercentile = 0.0,
+        bHighlightAll = true,
+        bEnableMinPercentile = false,
+        fMinPercentile = 0.3,
         fMinHighlightPercentile = 0.8,
         nSampleWindowSize = 100,
         fHighlightLingerTime = 0.7,
@@ -41,6 +44,110 @@ function DrFloatText:OnLoad()
     FloatText.OnDamageOrHealing = self.OnDamageOrHealing
     FloatText.OnPlayerDamageOrHealing = self.OnPlayerDamageOrHealing
     FloatText.GetDefaultTextOption = self.GetDefaultTextOption
+
+    self.xmlDoc = XmlDoc.CreateFromFile("drFloatText.xml")
+    self.xmlDoc:RegisterCallback("OnDocLoaded", self)
+end
+
+function DrFloatText:OnDocLoaded()
+    if self.xmlDoc ~= nil and self.xmlDoc:IsLoaded() then
+        self.wndMain = Apollo.LoadForm(self.xmlDoc, "drFloatTextOptions", nil, self)
+        if self.wndMain == nil then
+            Apollo.AddAddonErrorText(self, "Could not load the Options window for some reason.")
+            return
+        end
+
+        self.fontLookup = {}
+        for i,font in pairs(Apollo.GetGameFonts()) do
+            self.fontLookup[font.name] = i
+            self.wndMain:FindChild("fontFaceGrid"):AddRow(font.name)
+        end
+
+        self.wndMain:Show(false, true)
+        Apollo.RegisterSlashCommand("drft", "OnConfigure", self)
+    end
+end
+
+function DrFloatText:OnSave(eLevel)
+    if eLevel ~= GameLib.CodeEnumAddonSaveLevel.Character then
+        return nil
+    end
+
+    local ret = {}
+    for k,v in pairs(self.options) do
+        ret[k] = v
+    end
+    return ret
+end
+
+function DrFloatText:OnRestore(eLevel, tData)
+    for k,v in pairs(tData) do
+        self.options[k] = v
+    end
+end
+
+function DrFloatText:OnConfigure()
+    self.wndMain:FindChild("fontFaceButton"):SetText(self:GetSettings().strFontFace)
+    self.wndMain:FindChild("fontFaceGrid"):SetCurrentRow(self.fontLookup[self:GetSettings().strFontFace])
+    self.wndMain:FindChild("labelPreview"):SetFont(self:GetSettings().strFontFace)
+    self.wndMain:FindChild("sizeSlider"):SetValue(self:GetSettings().fFontScale)
+    self.wndMain:FindChild("sepShieldDmgButton"):SetCheck(self:GetSettings().bSeparateShieldDamage)
+    self.wndMain:FindChild("dropTallUnitsButton"):SetCheck(self:GetSettings().bDropTallUnits)
+    self.wndMain:FindChild("highlightAllButton"):SetCheck(self:GetSettings().bHighlightAll)
+    self.wndMain:FindChild("highlightCritsButton"):SetCheck(not self:GetSettings().bHighlightAll)
+    self.wndMain:FindChild("highlightPercentileText"):SetText(tostring(100 * self:GetSettings().fMinHighlightPercentile))
+    self.wndMain:FindChild("enableMinPercentileButton"):SetCheck(self:GetSettings().bEnableMinPercentile)
+    self.wndMain:FindChild("minPercentileText"):SetText(tostring(100 * self:GetSettings().fMinPercentile))
+
+    self:OnSizeSliderChanged()
+    self.wndMain:Invoke()
+end
+
+function DrFloatText:OnFontFaceButton()
+    local grid = self.wndMain:FindChild("fontFaceGrid")
+    if grid:IsVisible() then
+        self.wndMain:FindChild("fontFaceButton"):ChangeArt("BK3:btnMetal_DropDownNormal")
+        grid:Show(false)
+    else
+        self.wndMain:FindChild("fontFaceButton"):ChangeArt("BK3:btnMetal_DropDownFlyby")
+        grid:Invoke()
+    end
+end
+
+function DrFloatText:OnFontFaceSelect()
+    local grid = self.wndMain:FindChild("fontFaceGrid")
+    grid:Show(false)
+    local strFontFace = grid:GetCellText(grid:GetCurrentRow())
+    self.wndMain:FindChild("fontFaceButton"):SetText(strFontFace)
+    self.wndMain:FindChild("labelPreview"):SetFont(strFontFace)
+end
+
+function DrFloatText:OnSizeSliderChanged()
+    local size = self.wndMain:FindChild("sizeSlider"):GetValue()
+    self.wndMain:FindChild("labelPreview"):SetScale(size)
+    local w = self.wndMain:FindChild("labelPreviewContainer"):GetWidth()
+    local h = self.wndMain:FindChild("labelPreviewContainer"):GetHeight()
+    local w_offset = (1 - size) * w / 2
+    local h_offset = (1 - size) * h / 2
+    self.wndMain:FindChild("labelPreview"):SetAnchorOffsets(w_offset, h_offset, w_offset + w, h_offset + h)
+end
+
+function DrFloatText:OnOK()
+    local grid = self.wndMain:FindChild("fontFaceGrid")
+    self:GetSettings().strFontFace = grid:GetCellText(grid:GetCurrentRow())
+    self:GetSettings().fFontScale = self.wndMain:FindChild("sizeSlider"):GetValue()
+    self:GetSettings().bSeparateShieldDamage = self.wndMain:FindChild("sepShieldDmgButton"):IsChecked()
+    self:GetSettings().bDropTallUnits = self.wndMain:FindChild("dropTallUnitsButton"):IsChecked()
+    self:GetSettings().bHighlightAll = self.wndMain:FindChild("highlightAllButton"):IsChecked()
+    self:GetSettings().fMinHighlightPercentile = tonumber(self.wndMain:FindChild("highlightPercentileText"):GetText()) / 100
+    self:GetSettings().bEnableMinPercentile = self.wndMain:FindChild("enableMinPercentileButton"):IsChecked()
+    self:GetSettings().fMinPercentile = tonumber(self.wndMain:FindChild("minPercentileText"):GetText()) / 100
+
+    self.wndMain:Close()
+end
+
+function DrFloatText:OnCancel()
+    self.wndMain:Close()
 end
 
 function DrFloatText:OnDamageOrHealing(unitCaster, unitTarget, eDamageType, nDamage, nShieldDamaged, nAbsorptionAmount, bCritical)
@@ -62,9 +169,10 @@ function DrFloatText:OnDamageOrHealing(unitCaster, unitTarget, eDamageType, nDam
     end
 
     local fDamagePercentile = drfInstance:GetDamagePercentile(nDamage)
-    local bHighlight = fDamagePercentile > drfInstance:GetSettings().fMinHighlightPercentile
+    local bHighlight = (not drfInstance:GetSettings().bHighlightAll and bCritical)
+            or (drfInstance:GetSettings().bHighlightAll and fDamagePercentile > drfInstance:GetSettings().fMinHighlightPercentile)
 
-    if fDamagePercentile < drfInstance:GetSettings().fMinPercentile then
+    if drfInstance:GetSettings().bEnableMinPercentile and fDamagePercentile < drfInstance:GetSettings().fMinPercentile then
         return
     end
 
@@ -123,7 +231,7 @@ end
 
 function DrFloatText:GetDamageOrHealAnimation(unitTarget, eDamageType, bCritical, bHighlight, fDamagePercentile)
     local nBaseColor = self:GetColor(unitTarget, false, eDamageType, bCritical)
-    local fMaxSize = 1.0
+    local fMaxSize = self:GetSettings().fFontScale
     local fBaseSpeed = self:GetSettings().fBaseSpeed
     local fHighlightDelay = bHighlight and
             (self:GetSettings().fHighlightLingerTime * (fDamagePercentile - self:GetSettings().fMinHighlightPercentile) / (1 - self:GetSettings().fMinHighlightPercentile))
@@ -140,7 +248,7 @@ end
 
 function DrFloatText:GetTargetAbsorbTextOptions()
     local options = self:GetDefaultTextOption()
-    options.fScale = 1.0
+    options.fScale = self:GetSettings().fFontScale
     options.fDuration = 2
     options.eCollisionMode = CombatFloater.CodeEnumFloaterCollisionMode.IgnoreCollision
     options.eLocation = CombatFloater.CodeEnumFloaterLocation.Chest
@@ -167,7 +275,8 @@ end
 
 function DrFloatText:GetPlayerDamageOrHealAnimation(eDamageType, bCritical)
     local nBaseColor = self:GetColor(nil, true, eDamageType, bCritical)
-    local fMaxSize = bCritical and 1.5 or 1.0
+    local fBaseSize = self:GetSettings().fFontScale
+    local fMaxSize = fBaseSize * (bCritical and 1.5 or 1.0)
     local nStallTime = 0.3
     local fDirection = (eDamageType == GameLib.CodeEnumDamageType.Heal or eDamageType == GameLib.CodeEnumDamageType.HealShields) and 0 or 180
 
@@ -182,6 +291,7 @@ end
 
 function DrFloatText:GetPlayerAbsorbTextOptions()
     local nStallTime = 0.3
+    local fBaseSize = self:GetSettings().fFontScale
     local options = self:GetDefaultTextOption()
     options.nColor = 0xf8f3d7
     options.eCollisionMode = CombatFloater.CodeEnumFloaterCollisionMode.IgnoreCollision
@@ -189,10 +299,10 @@ function DrFloatText:GetPlayerAbsorbTextOptions()
     options.fOffsetDirection = 0
     options.fOffset = -0.5
     options.arFrames = {
-            [1] = {fTime = 0,                 fScale = 1.1},
-            [2] = {fTime = 0.05,              fScale = 0.7},
-            [3] = {fTime = 0.2 + nStallTime,                fAlpha = 1.0, fVelocityDirection = 180, fVelocityMagnitude = 3},
-            [4] = {fTime = 0.45 + nStallTime,               fAlpha = 0.2},
+            [1] = {fTime = 0,                 fScale = fBaseSize * 1.1},
+            [2] = {fTime = 0.05,              fScale = fBaseSize * 0.7},
+            [3] = {fTime = 0.2 + nStallTime,                             fAlpha = 1.0, fVelocityDirection = 180, fVelocityMagnitude = 3},
+            [4] = {fTime = 0.45 + nStallTime,                            fAlpha = 0.2},
     }
     return options
 end
@@ -261,8 +371,8 @@ function DrFloatText:GetDefaultTextOption()
         fOffsetDirection            = 0,
         fOffset                     = -0.5,
         eCollisionMode              = CombatFloater.CodeEnumFloaterCollisionMode.IgnoreCollision,
-        fExpandCollisionBoxWidth    = 1,
-        fExpandCollisionBoxHeight   = 1,
+        fExpandCollisionBoxWidth    = 1.0,
+        fExpandCollisionBoxHeight   = 1.0,
         nColor                      = 0xFFFFFF,
         iUseDigitSpriteSet          = nil,
         bUseScreenPos               = false,
